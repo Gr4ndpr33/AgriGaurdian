@@ -1,0 +1,4 @@
+
+# Treat PDF and video files as binary
+*.pdf binary
+*.mp4 binary

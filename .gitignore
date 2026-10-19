@@ -1,0 +1,32 @@
+
+# Python cache and compiled files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
+
+# Test and coverage artifacts
+.coverage
+htmlcov/
+
+# Editor and operating-system files
+.vscode/
+.DS_Store
+Thumbs.db
+# Generated monitoring data
+agriguardian_log.csv
+
+# Accidental nested repository
+AgriGaurdian/
+
+# Demo video kept outside Git for now
+AgroGuardian__Physical_AI.mp4
