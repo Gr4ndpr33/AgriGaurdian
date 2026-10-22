@@ -7,6 +7,8 @@ import pandas as pd
 
 from logger import LOG_FILE
 from streamlit_autorefresh import st_autorefresh
+
+from pest_monitor import evaluate_pest_risk
 # Page configuration
 
 st.set_page_config(
@@ -312,3 +314,166 @@ else:
     st.success("No historical alerts found in recorded data.")
 
 st.caption(f"Recorded monitoring cycles: {len(data)}")
+
+# Recorded crop pest monitoring
+
+st.markdown("---")
+st.markdown("## Crop pest monitoring")
+
+pest_columns = [
+    "pests_observed",
+    "plants_inspected",
+    "plants_damaged",
+    "pest_pressure_per_plant",
+    "damage_percent",
+    "pest_risk_level",
+    "pest_alert",
+]
+
+if all(column in data.columns for column in pest_columns):
+    # Convert CSV values to appropriate types.
+    for column in [
+        "pests_observed",
+        "plants_inspected",
+        "plants_damaged",
+        "pest_pressure_per_plant",
+        "damage_percent",
+    ]:
+        data[column] = pd.to_numeric(data[column], errors="coerce")
+
+    pest_data = data.dropna(
+        subset=["pest_risk_level"]
+    ).copy()
+
+    # Empty strings represent cycles without pest assessments.
+    pest_data = pest_data[
+        pest_data["pest_risk_level"].astype(str).str.strip() != ""
+    ]
+
+    if not pest_data.empty:
+        latest_pest = pest_data.iloc[-1]
+        risk = str(latest_pest["pest_risk_level"]).upper()
+
+        st.caption(
+            "Latest recorded pest observations from the rover simulation."
+        )
+
+        col1, col2, col3, col4 = st.columns(4)
+
+        col1.metric(
+            "Pests observed",
+            int(latest_pest["pests_observed"]),
+        )
+
+        col2.metric(
+            "Plants inspected",
+            int(latest_pest["plants_inspected"]),
+        )
+
+        col3.metric(
+            "Crop damage",
+            f"{latest_pest['damage_percent']:.1f}%",
+        )
+
+        col4.metric(
+            "Pest pressure",
+            f"{latest_pest['pest_pressure_per_plant']:.2f} pests/plant",
+        )
+
+        if risk == "HIGH":
+            st.error(
+                "HIGH PEST RISK — inspect the affected crop area "
+                "and identify the pest before choosing a response."
+            )
+        elif risk == "MODERATE":
+            st.warning(
+                "MODERATE PEST RISK — inspect additional plants "
+                "and monitor activity."
+            )
+        else:
+            st.success(
+                "LOW PEST RISK — continue routine crop scouting."
+            )
+
+        # Historical crop damage chart.
+        st.markdown("### Crop damage history")
+
+        damage_chart = pest_data[
+            ["damage_percent"]
+        ].copy()
+        damage_chart.columns = ["Crop damage (%)"]
+
+        st.line_chart(damage_chart)
+
+        # Historical pest pressure chart.
+        st.markdown("### Pest pressure history")
+
+        pressure_chart = pest_data[
+            ["pest_pressure_per_plant"]
+        ].copy()
+        pressure_chart.columns = ["Pests per plant"]
+
+        st.line_chart(pressure_chart)
+
+        # Recorded observations.
+        st.markdown("### Recorded pest observations")
+
+        pest_history = pest_data[
+            [
+                "timestamp",
+                "pests_observed",
+                "plants_inspected",
+                "plants_damaged",
+                "pest_pressure_per_plant",
+                "damage_percent",
+                "pest_risk_level",
+                "pest_alert",
+            ]
+        ].copy()
+
+        pest_history = pest_history.rename(columns={
+            "timestamp": "Timestamp",
+            "pests_observed": "Pests observed",
+            "plants_inspected": "Plants inspected",
+            "plants_damaged": "Plants damaged",
+            "pest_pressure_per_plant": "Pests per plant",
+            "damage_percent": "Crop damage (%)",
+            "pest_risk_level": "Risk level",
+            "pest_alert": "Alert",
+        })
+
+        st.dataframe(
+            pest_history.iloc[::-1],
+            use_container_width=True,
+        )
+
+        pest_csv = pest_history.to_csv(index=False).encode("utf-8")
+
+        st.download_button(
+            label="Download pest monitoring history",
+            data=pest_csv,
+            file_name="agroguardian_pest_history.csv",
+            mime="text/csv",
+        )
+
+        st.caption(
+            f"Recorded pest assessments: {len(pest_data)}"
+        )
+
+    else:
+        st.info(
+            "No pest assessments have been recorded yet. "
+            "Run `py main.py` while the rover is in the field."
+        )
+
+else:
+    st.warning(
+        "The CSV does not contain all pest-monitoring columns. "
+        "Check that the updated logger is being used and that "
+        "the rover has recorded a new monitoring cycle."
+    )
+
+st.caption(
+    "Pest-risk thresholds are illustrative prototype rules, "
+    "not validated agricultural treatment recommendations."
+)
