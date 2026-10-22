@@ -82,6 +82,75 @@ class TestAgroGuardianActions(unittest.TestCase):
 
         self.assertFalse(result["executed"])
 
+    def test_irrigation_rejected_when_water_tank_is_low(self):
+        action = {
+            "action": "IRRIGATE",
+            "reason": "Soil is dry",
+        }
+        readings = {
+            "soil_moisture": 20,
+            "water_level": 5,
+            "temperature": 25,
+        }
+
+        result = validate_action(action, readings=readings)
+
+        self.assertFalse(result["approved"])
+        self.assertIn("Water tank too low", result["reason"])
+
+    def test_irrigation_rejected_when_soil_is_wet(self):
+        action = {
+            "action": "IRRIGATE",
+            "reason": "Test irrigation",
+        }
+        readings = {
+            "soil_moisture": 50,
+            "water_level": 80,
+            "temperature": 25,
+        }
+
+        result = validate_action(action, readings=readings)
+
+        self.assertFalse(result["approved"])
+
+    def test_irrigation_approved_when_safe_and_needed(self):
+        action = {
+            "action": "IRRIGATE",
+            "reason": "Soil is dry",
+        }
+        readings = {
+            "soil_moisture": 20,
+            "water_level": 80,
+            "temperature": 25,
+        }
+
+        result = validate_action(action, readings=readings)
+
+        self.assertTrue(result["approved"])
+
+    def test_return_rejected_without_power_authorization(self):
+        action = {
+            "action": "RETURN_TO_STATION",
+            "reason": "Return requested",
+        }
+
+        result = validate_action(action)
+
+        self.assertFalse(result["approved"])
+
+    def test_return_approved_with_power_authorization(self):
+        action = {
+            "action": "RETURN_TO_STATION",
+            "reason": "Power manager requires return",
+        }
+        power_result = {"mode": "RETURN_TO_STATION"}
+
+        result = validate_action(
+            action,
+            power_result=power_result,
+        )
+
+        self.assertTrue(result["approved"])
 
 if __name__ == "__main__":
     unittest.main()
