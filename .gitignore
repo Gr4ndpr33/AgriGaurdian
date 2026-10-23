@@ -30,3 +30,12 @@ AgriGaurdian/
 
 # Demo video kept outside Git for now
 AgroGuardian__Physical_AI.mp4
+# Generated action audit and local log backups
+action_audit.csv
+agriguardian_log_backup.csv
+agriguardian_log_old.csv
+
+# Generated action audit and local log backups
+action_audit.csv
+agriguardian_log_backup.csv
+agriguardian_log_old.csv

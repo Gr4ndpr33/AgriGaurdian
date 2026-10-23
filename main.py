@@ -9,7 +9,13 @@ from battery import Battery
 from rover import Rover
 from logger import log_cycle
 from pest_monitor import evaluate_pest_risk
-from actions import decide_actions, validate_action, execute_simulated_action
+from actions import (
+    decide_actions,
+    validate_action,
+    execute_simulated_action,
+)
+from action_logger import log_action
+
 
 def simulate_pest_readings():
     """Generate simulated pest observations for prototype testing."""
@@ -24,8 +30,9 @@ def simulate_pest_readings():
         "plants_damaged": plants_damaged,
     }
 
+
 def process_actions(readings, pest_result=None, power_result=None):
-    """Propose, validate, and simulate AgroGuardian actions."""
+    """Propose, validate, simulate, and audit AgroGuardian actions."""
 
     proposed_actions = decide_actions(
         readings,
@@ -40,22 +47,42 @@ def process_actions(readings, pest_result=None, power_result=None):
         print(f"Reason: {action['reason']}")
 
         validation = validate_action(
-    action,
-    readings=readings,
-    power_result=power_result,
-)
+            action,
+            readings=readings,
+            power_result=power_result,
+        )
+
+        execution_result = None
 
         if validation["approved"]:
-            result = execute_simulated_action(
-    action,
-    readings=readings,
-    power_result=power_result,
-)
-            print(result["message"])
+            execution_result = execute_simulated_action(
+                action,
+                readings=readings,
+                power_result=power_result,
+            )
+
+            print(execution_result["message"])
         else:
-            print("Action rejected; it was not simulated.")
+            rejection_reason = validation.get(
+                "reason",
+                "No reason provided.",
+            )
+            print(f"Action rejected: {rejection_reason}")
+            print("Action was not simulated.")
+
+        # Record approved and rejected actions in the audit CSV.
+        log_action(
+            action,
+            validation,
+            execution_result=execution_result,
+        )
+
+        print("Action decision recorded in audit log.")
+
 
 def run_agriguardian():
+    """Run the AgroGuardian rover simulation."""
+
     battery = Battery(charge_percent=70)
     rover = Rover(distance_to_station=100)
 
@@ -70,7 +97,9 @@ def run_agriguardian():
             readings = read_sensors()
 
             readings["battery_percent"] = battery.charge_percent
-            readings["distance_to_station"] = rover.distance_to_station
+            readings["distance_to_station"] = (
+                rover.distance_to_station
+            )
 
             irrigation_result = "PAUSED"
             power_mode = "CHARGING"
@@ -88,7 +117,9 @@ def run_agriguardian():
             if rover.is_at_station():
                 rover.recharge(battery)
 
-                readings["battery_percent"] = battery.charge_percent
+                readings["battery_percent"] = (
+                    battery.charge_percent
+                )
                 readings["distance_to_station"] = (
                     rover.distance_to_station
                 )
@@ -115,7 +146,12 @@ def run_agriguardian():
                 irrigation_result = "PAUSED"
 
                 print("ACTION: Field tasks paused; returning.")
-                process_actions(readings, power_result=power)
+
+                process_actions(
+                    readings,
+                    power_result=power,
+                )
+
                 rover.return_to_station()
 
                 # Simulated energy consumption during the return journey.
@@ -126,11 +162,11 @@ def run_agriguardian():
                 )
 
             elif rover.status == "FIELD":
-                # Simulate pest observations during field monitoring.
+                # Generate simulated pest observations.
                 pest_readings = simulate_pest_readings()
                 pest_result = evaluate_pest_risk(pest_readings)
 
-                # Add pest counts to the readings sent to the logger.
+                # Include pest counts in the monitoring log.
                 readings.update(pest_readings)
 
                 print("\n--- Crop Pest Monitoring ---")
@@ -175,13 +211,14 @@ def run_agriguardian():
                     f"{irrigation['irrigate']}"
                 )
                 print(f"Reason: {irrigation['reason']}")
-                process_actions(
-    readings,
-    pest_result=pest_result,
-    power_result=power,
-)
 
-                # Update the battery after field operations.
+                process_actions(
+                    readings,
+                    pest_result=pest_result,
+                    power_result=power,
+                )
+
+                # Update battery after field operations.
                 battery.update(
                     solar_power_watts=readings["solar_power_watts"],
                     consumption_watts=18,
@@ -189,12 +226,15 @@ def run_agriguardian():
                 )
 
             else:
-                # Never perform field tasks while returning to the station.
-                print("Field tasks paused while rover is returning.")
+                # Never perform field tasks while returning.
+                print(
+                    "Field tasks paused while rover is returning."
+                )
 
             # Save the latest rover state.
             readings["battery_percent"] = round(
-                battery.charge_percent, 2
+                battery.charge_percent,
+                2,
             )
             readings["distance_to_station"] = (
                 rover.distance_to_station
@@ -209,14 +249,19 @@ def run_agriguardian():
                 pest_result=pest_result,
             )
 
-            print(f"Updated battery: {battery.charge_percent:.2f}%")
+            print(
+                f"Updated battery: "
+                f"{battery.charge_percent:.2f}%"
+            )
             print("Monitoring cycle saved to CSV.")
 
             time.sleep(2)
 
     except KeyboardInterrupt:
         print("\nSimulation stopped.")
-        print(f"Final battery: {battery.charge_percent:.2f}%")
+        print(
+            f"Final battery: {battery.charge_percent:.2f}%"
+        )
         print(f"Rover status: {rover.status}")
 
 

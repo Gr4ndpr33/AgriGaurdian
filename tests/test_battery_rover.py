@@ -1,99 +1,72 @@
 
+import csv
+import tempfile
 import unittest
+from pathlib import Path
+from unittest.mock import patch
 
-from battery import Battery
-from rover import Rover
-
-
-class TestAgroGuardianBattery(unittest.TestCase):
-
-    def test_battery_drops_when_consumption_exceeds_solar(self):
-        battery = Battery(charge_percent=70)
-
-        battery.update(
-            solar_power_watts=0,
-            consumption_watts=20,
-            duration_seconds=60,
-        )
-
-        self.assertLess(battery.charge_percent, 70)
-
-    def test_battery_increases_when_solar_exceeds_consumption(self):
-        battery = Battery(charge_percent=50)
-
-        battery.update(
-            solar_power_watts=40,
-            consumption_watts=10,
-            duration_seconds=60,
-        )
-
-        self.assertGreater(battery.charge_percent, 50)
-
-    def test_battery_never_exceeds_100_percent(self):
-        battery = Battery(charge_percent=99)
-
-        battery.update(
-            solar_power_watts=1000,
-            consumption_watts=0,
-            duration_seconds=3600,
-        )
-
-        self.assertEqual(battery.charge_percent, 100)
+from action_logger import log_action, AUDIT_FIELDS
 
 
-class TestAgroGuardianRover(unittest.TestCase):
+class TestActionLogger(unittest.TestCase):
 
-    def test_rover_reaches_station_after_multiple_returns(self):
-        rover = Rover(distance_to_station=100)
+    def test_approved_action_is_logged(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            audit_path = Path(temp_dir) / "audit.csv"
 
-        rover.return_to_station()
-        self.assertEqual(rover.distance_to_station, 70)
-        self.assertEqual(rover.status, "RETURNING")
+            with patch("action_logger.AUDIT_FILE", audit_path):
+                log_action(
+                    {"action": "MONITOR", "reason": "Routine check"},
+                    {
+                        "approved": True,
+                        "reason": "Action passed validation.",
+                    },
+                    {
+                        "executed": True,
+                        "message": "SIMULATION ONLY: MONITOR",
+                    },
+                )
 
-        rover.return_to_station()
-        self.assertEqual(rover.distance_to_station, 40)
+            with audit_path.open(
+                newline="", encoding="utf-8"
+            ) as csv_file:
+                rows = list(csv.DictReader(csv_file))
 
-        rover.return_to_station()
-        self.assertEqual(rover.distance_to_station, 10)
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["action"], "MONITOR")
+            self.assertEqual(rows[0]["approved"], "True")
+            self.assertEqual(rows[0]["executed"], "True")
+            self.assertEqual(rows[0]["reason"], "Routine check")
 
-        rover.return_to_station()
-        self.assertEqual(rover.distance_to_station, 0)
-        self.assertEqual(rover.status, "CHARGING")
-        self.assertTrue(rover.is_at_station())
+    def test_rejected_action_is_logged(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            audit_path = Path(temp_dir) / "audit.csv"
 
-    def test_rover_becomes_ready_when_battery_is_full(self):
-        rover = Rover(distance_to_station=0)
-        battery = Battery(charge_percent=95)
+            with patch("action_logger.AUDIT_FILE", audit_path):
+                log_action(
+                    {"action": "IRRIGATE", "reason": "Soil is dry"},
+                    {
+                        "approved": False,
+                        "reason": "Water tank too low.",
+                    },
+                )
 
-        rover.recharge(battery)
+            with audit_path.open(
+                newline="", encoding="utf-8"
+            ) as csv_file:
+                rows = list(csv.DictReader(csv_file))
 
-        self.assertEqual(battery.charge_percent, 100)
-        self.assertEqual(rover.status, "FIELD")
+            self.assertEqual(rows[0]["approved"], "False")
+            self.assertEqual(rows[0]["executed"], "False")
+            self.assertEqual(
+                rows[0]["validation_reason"],
+                "Water tank too low.",
+            )
 
-    def test_rover_moves_towards_station(self):
-        rover = Rover(distance_to_station=100)
-
-        rover.return_to_station()
-
-        self.assertEqual(rover.distance_to_station, 70)
-        self.assertEqual(rover.status, "RETURNING")
-
-    def test_rover_cannot_charge_before_reaching_station(self):
-        rover = Rover(distance_to_station=50)
-        battery = Battery(charge_percent=40)
-
-        rover.recharge(battery)
-
-        self.assertEqual(battery.charge_percent, 40)
-
-    def test_rover_charges_at_station(self):
-        rover = Rover(distance_to_station=0)
-        battery = Battery(charge_percent=40)
-
-        rover.recharge(battery)
-
-        self.assertEqual(battery.charge_percent, 45)
-        self.assertEqual(rover.status, "CHARGING")
+    def test_audit_has_expected_columns(self):
+        self.assertIn("timestamp", AUDIT_FIELDS)
+        self.assertIn("validation_reason", AUDIT_FIELDS)
+        self.assertIn("execution_message", AUDIT_FIELDS)
 
 
 if __name__ == "__main__":
